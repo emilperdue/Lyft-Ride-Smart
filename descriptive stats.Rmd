@@ -1,0 +1,280 @@
+---
+title: "descriptive stats"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+require(haven)
+
+# HP Rides
+hp_rides <- read.csv('HP Rides.csv')
+
+hp_rides$Trip.Start.Timestamp <- as.Date(hp_rides$Trip.Start.Timestamp, "%m/%d/%Y")
+hp_rides$Trip.End.Timestamp <- as.Date(hp_rides$Trip.End.Timestamp, "%m/%d/%Y")
+hp_rides[is.na(hp_rides)] <- 0
+
+```
+
+```{r}
+final <- aggregate(x = hp_rides$Trip.Miles, by = list(hp_rides$Trip.Start.Timestamp), FUN = length)
+colnames(final) <- c('Date', 'Trip_Count')
+```
+
+```{r}
+library(zoo)
+table2 <- data.frame(matrix(ncol = 2, nrow = 0))
+colnames(table2) <- c("Date", "Post_Pre")
+final$StringDate <- final$Date
+final$StringDate <- as.character(final$StringDate)
+
+programDates <- final[final$Date >= "2021-10-01",]$Date
+
+for (date in programDates) {
+  year = format(as.Date(date), "%Y")
+  properD = as.character(as.Date(date))
+  if (year == "2021") {
+    noYear <- format(as.Date(date), "%m-%d")
+    postDate <- as.Date(date)
+    preDate <- as.Date(paste("2019", noYear, sep="-"))
+    
+    post <- final[final$Date == postDate,]$Trip_Count
+    pre <- final[final$Date == preDate,]$Trip_Count
+    
+    table2[nrow(table2) + 1,] = c(properD, post - pre)
+  }
+  if (year == "2022") {
+    noYear <- format(as.Date(date), "%m-%d")
+    postDate <- as.Date(date)
+    preDate <- as.Date(paste("2020", noYear, sep="-"))
+    
+    post <- final[final$Date == postDate,]$Trip_Count
+    pre <- final[final$Date == preDate,]$Trip_Count
+    
+    table2[nrow(table2) + 1,] = c(properD, post - pre)
+  }
+}
+table2$Date = as.Date(table2$Date)
+```
+
+```{r}
+# Crime
+hp_crime <- read.csv('HP Incidents.csv')
+
+hp_crime$Reported <- as.Date(hp_crime$Reported, "%m/%d/%Y")
+
+final2 <- aggregate(x = hp_crime$Incident, by = list(hp_crime$Reported), FUN = length)
+colnames(final2) <- c('Date', 'Report_Count')
+final2$Date <- format(final2$Date, "%Y-%m-01")
+
+final3 <- aggregate(x = final2$Report_Count, by = list(final2$Date), FUN = sum)
+colnames(final3) <- c('Date', 'Report_Count')
+final3 <- subset(final3, Report_Count != 1)
+final3$Date <- as.Date(final3$Date, "%Y-%m-%d")
+```
+
+``` {r}
+library(xts)
+final3.xts <- xts(final3$Report_Count,order.by = final3$Date)
+final3.xts <- na.locf(merge(final3.xts, foo=zoo(NA, order.by=seq(start(final3.xts), end(final3.xts),
+  "day",drop=F)))[, 1])
+# https://stackoverflow.com/questions/50167509/converting-monthly-data-to-daily-in-r
+
+final3 <- data.frame(Date=index(final3.xts), coredata(final3.xts))
+colnames(final3) <- c("Date", "Report_Count")
+```
+
+```{r}
+# Getting differences
+table3 <- data.frame(matrix(ncol = 2, nrow = 0))
+colnames(table3) <- c("Date", "Report_Diff")
+final3$StringDate <- final3$Date
+final3$StringDate <- as.character(final3$StringDate)
+
+programDates <- final3[final3$Date >= "2021-10-01",]$Date
+
+for (date in programDates) {
+  year = format(as.Date(date), "%Y")
+  properD = as.character(as.Date(date))
+  if (year == "2021") {
+    noYear <- format(as.Date(date), "%m-%d")
+    postDate <- as.Date(date)
+    preDate <- as.Date(paste("2019", noYear, sep="-"))
+    
+    post <- final3[final3$Date == postDate,]$Report_Count
+    pre <- final3[final3$Date == preDate,]$Report_Count
+    
+    table3[nrow(table3) + 1,] = c(properD, post - pre)
+  }
+  if (year == "2022") {
+    noYear <- format(as.Date(date), "%m-%d")
+    postDate <- as.Date(date)
+    preDate <- as.Date(paste("2020", noYear, sep="-"))
+    
+    post <- final3[final3$Date == postDate,]$Report_Count
+    pre <- final3[final3$Date == preDate,]$Report_Count
+    
+    table3[nrow(table3) + 1,] = c(properD, post - pre)
+  }
+}
+table3$Date = as.Date(table3$Date)
+```
+
+```{r}
+master <- merge(table2, table3)
+```
+
+```{r}
+breakStatus <- function(date) {
+  #Thanksgiving
+  if (date >= as.Date("2021-11-20") & date <= as.Date("2021-11-28")) {
+    return(1)
+  }
+  
+  # Winter break
+  if (date >= as.Date("2021-12-11") & date < as.Date("2022-01-10")) {
+    return(1)
+  }
+  
+  # Spring break
+  if (date >= as.Date("2022-03-19") & date < as.Date("2022-03-28")) {
+    return(1)
+  }
+  
+  return(0)
+}
+master$Student_Break <- as.numeric(lapply(master$Date, breakStatus))
+```
+
+```{r}
+library(tidyverse)
+master <- tibble::rowid_to_column(master, "Days_Since_Start")
+master$Days_Since_Start <- master$Days_Since_Start - 1
+```
+
+```{r}
+require(haven)
+
+# Chicago Rides
+chi_rides <- read.csv('Chicago Rides (Freq).csv')
+
+chi_rides$Date <- as.Date(chi_rides$Date, "%m/%d/%Y")
+
+```
+
+```{r}
+table4 <- data.frame(matrix(ncol = 2, nrow = 0))
+colnames(table4) <- c("Date", "Post_Pre (CHICAGO)")
+chi_rides$StringDate <- chi_rides$Date
+chi_rides$StringDate <- as.character(chi_rides$StringDate)
+
+programDates <- chi_rides[chi_rides$Date >= "2021-10-01",]$Date
+
+for (date in programDates) {
+  year = format(as.Date(date), "%Y")
+  properD = as.character(as.Date(date))
+  if (year == "2021") {
+    noYear <- format(as.Date(date), "%m-%d")
+    postDate <- as.Date(date)
+    preDate <- as.Date(paste("2019", noYear, sep="-"))
+    
+    post <- chi_rides[chi_rides$Date == postDate,]$Count
+    pre <- chi_rides[chi_rides$Date == preDate,]$Count
+    
+    table4[nrow(table4) + 1,] = c(properD, post - pre)
+  }
+  if (year == "2022") {
+    noYear <- format(as.Date(date), "%m-%d")
+    postDate <- as.Date(date)
+    preDate <- as.Date(paste("2020", noYear, sep="-"))
+    
+    post <- chi_rides[chi_rides$Date == postDate,]$Count
+    pre <- chi_rides[chi_rides$Date == preDate,]$Count
+    
+    table4[nrow(table4) + 1,] = c(properD, post - pre)
+  }
+}
+table4$Date = as.Date(table4$Date)
+```
+
+```{r}
+master <- merge(master, table4)
+```
+
+```{r}
+colnames(master) <- c("Date", "Days_Since_Start", "HP Ride Difference", "HP Crime Difference", "Student_Break", "Chicago Ride Difference")
+master$`HP Ride Difference` <- as.numeric(master$`HP Ride Difference`)
+master$`HP Crime Difference` <- as.numeric(master$`HP Crime Difference`)
+master$`Chicago Ride Difference` <- as.numeric(master$`Chicago Ride Difference`)
+```
+
+# REGRESSION
+
+```{r}
+require(estimatr)
+mod1 <- lm_robust(`HP Ride Difference` ~ Days_Since_Start, data=master)
+summary(mod1)
+```
+
+```{r}
+mod2 <- lm_robust(`HP Ride Difference` ~ Days_Since_Start + `HP Crime Difference` + Student_Break + `Chicago Ride Difference`, data=master)
+summary(mod2)
+
+
+require(modelsummary)
+models <- list(mod2)
+modelsummary(mod2, statistic = c('conf.int', 'p = {p.value}', 's.e. = {std.error}'))
+```
+
+```{r}
+master2 <- master
+master2 <- master2[master2$Date < '2022-03-01', ]
+
+mod3 <- lm_robust(`HP Ride Difference` ~ Days_Since_Start + `HP Crime Difference` + Student_Break + `Chicago Ride Difference`, data=master2)
+summary(mod3)
+```
+
+
+
+
+
+
+```{r}
+# weird Stuff for visuals
+final2 <- final
+final2$Date <- format(final2$Date, format = "%Y/%m")
+finalB <- aggregate(x = final2$Trip_Count, by = list(final2$Date), FUN = sum)
+colnames(finalB) <- c('Date', 'Trip_Count')
+```
+
+```{r}
+options(scipen=999)
+require(ggplot2)
+p2 <- ggplot(data = finalB, aes(x = Date, y= Trip_Count)) + geom_bar(stat='identity') + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+p2 + xlab('Year/Month') + ylab('Trip Count') + ggtitle('HP Rideshare Trips Taken by Month') +
+  geom_vline(aes(xintercept = '2020/03'), colour="blue") + geom_vline(aes(xintercept = '2021/10'), colour="red") +
+  geom_text(aes(x='2020/03', label = 'Start of COVID'), colour = "blue", y = 260000) +
+  geom_text(aes(x='2021/10', label = 'Start of Program'), colour = "red", y = 260000)
+```
+
+```{r}
+library(tidyverse)
+table2 <- tibble::rowid_to_column(table2, "Days_Since_Start")
+table2$Days_Since_Start <- table2$Days_Since_Start - 1
+```
+
+```{r}
+master$Student_Break = as.factor(master$Student_Break)
+master$`Students on Break?` = as.factor(ifelse(master$Student_Break == 0, "Not on break", "On break"))
+p3 <- ggplot(data = master, aes(x = Days_Since_Start, y= `HP Ride Difference`, fill = `Students on Break?`)) + geom_bar(stat='identity') + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+p3 + xlab("# of Days Since Program's Implementation") + ylab('Difference in # of rides (CURRENT - HISTORIC)') + ggtitle('HP Ridership Difference between Program Dates and Historic Dates')
+```
+```{r}
+p4 <- ggplot(data = master, aes(x = Days_Since_Start, y= `Chicago Ride Difference`)) + geom_bar(stat='identity') + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+p4 + xlab("# of Days Since Program's Implementation") + ylab('Difference in # of rides (CURRENT - HISTORIC)') + ggtitle('Chicago Ridership Difference between Program Dates and Historic Dates')
+```
+
+```{r}
+# Maybe don't include this one
+p5 <- ggplot(data = master, aes(x = Days_Since_Start, y= `HP Crime Difference`)) + geom_bar(stat='identity') + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+p5 + xlab("# of Days Since Program's Implementation") + ylab('Difference in # of crimes (CURRENT - HISTORIC)') + ggtitle('Chicago Crime Count Difference between Program Dates and Historic Dates')
+```
