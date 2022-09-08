@@ -1,5 +1,5 @@
 ---
-title: "descriptive stats"
+title: "Descriptive Stats"
 output: pdf_document
 ---
 
